@@ -1,3 +1,4 @@
+import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
@@ -25,6 +26,7 @@ const templates = {
 
 // Crear servidor Express
 const app = express();
+app.use(cors());
 const transports = {};
 
 // Endpoint SSE — Claude se conecta aquí
