@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import express from "express";
 import { z } from "zod";
 
 // Templates de contratos
@@ -22,56 +23,90 @@ const templates = {
   }
 };
 
-// Crear el servidor MCP
-const server = new McpServer({
-  name: "contratos-mcp",
-  version: "1.0.0"
+// Crear servidor Express
+const app = express();
+const transports = {};
+
+// Endpoint SSE — Claude se conecta aquí
+app.get("/sse", async (req, res) => {
+  const transport = new SSEServerTransport("/messages", res);
+  transports[transport.sessionId] = transport;
+
+  res.on("close", () => {
+    delete transports[transport.sessionId];
+  });
+
+  const server = createMcpServer();
+  await server.connect(transport);
 });
 
-// Herramienta 1: obtener_contrato
-server.tool(
-  "obtener_contrato",
-  "Retorna los campos requeridos para un tipo de contrato",
-  { tipo: z.string().describe("Tipo de contrato: 'influencer' o 'servicios'") },
-  async ({ tipo }) => {
-    const template = templates[tipo];
-    if (!template) {
-      return {
-        content: [{ type: "text", text: `Tipo de contrato '${tipo}' no encontrado. Opciones: influencer, servicios` }]
-      };
-    }
-    return {
-      content: [{ type: "text", text: `Campos requeridos para contrato '${tipo}': ${template.campos.join(", ")}` }]
-    };
+// Endpoint para recibir mensajes de Claude
+app.post("/messages", express.json(), async (req, res) => {
+  const sessionId = req.query.sessionId;
+  const transport = transports[sessionId];
+  if (transport) {
+    await transport.handlePostMessage(req, res);
+  } else {
+    res.status(400).json({ error: "Session not found" });
   }
-);
+});
 
-// Herramienta 2: generar_contrato
-server.tool(
-  "generar_contrato",
-  "Genera un contrato rellenando los campos del template sin modificar las cláusulas",
-  {
-    tipo: z.string().describe("Tipo de contrato: 'influencer' o 'servicios'"),
-    datos: z.object({
-      nombre: z.string().optional(),
-      rut: z.string().optional(),
-      monto: z.string().optional(),
-      duracion: z.string().optional(),
-      red_social: z.string().optional(),
-      descripcion_servicio: z.string().optional(),
-      fecha_entrega: z.string().optional(),
-    }).describe("Datos para rellenar el contrato")
-  },
-  async ({ tipo, datos }) => {
-    const template = templates[tipo];
-    if (!template) {
+// Health check
+app.get("/", (req, res) => {
+  res.json({ status: "contratos-mcp running" });
+});
+
+// Función que crea y configura el servidor MCP
+function createMcpServer() {
+  const server = new McpServer({
+    name: "contratos-mcp",
+    version: "1.0.0"
+  });
+
+  // Herramienta 1: obtener_contrato
+  server.tool(
+    "obtener_contrato",
+    "Retorna los campos requeridos para un tipo de contrato",
+    { tipo: z.string().describe("Tipo de contrato: 'influencer' o 'servicios'") },
+    async ({ tipo }) => {
+      const template = templates[tipo];
+      if (!template) {
+        return {
+          content: [{ type: "text", text: `Tipo de contrato '${tipo}' no encontrado. Opciones: influencer, servicios` }]
+        };
+      }
       return {
-        content: [{ type: "text", text: `Tipo de contrato '${tipo}' no encontrado.` }]
+        content: [{ type: "text", text: `Campos requeridos para contrato '${tipo}': ${template.campos.join(", ")}` }]
       };
     }
+  );
 
-    const fecha = new Date().toLocaleDateString("es-CL");
-    const contrato = `
+  // Herramienta 2: generar_contrato
+  server.tool(
+    "generar_contrato",
+    "Genera un contrato rellenando los campos del template sin modificar las cláusulas",
+    {
+      tipo: z.string().describe("Tipo de contrato: 'influencer' o 'servicios'"),
+      datos: z.object({
+        nombre: z.string().optional(),
+        rut: z.string().optional(),
+        monto: z.string().optional(),
+        duracion: z.string().optional(),
+        red_social: z.string().optional(),
+        descripcion_servicio: z.string().optional(),
+        fecha_entrega: z.string().optional(),
+      }).describe("Datos para rellenar el contrato")
+    },
+    async ({ tipo, datos }) => {
+      const template = templates[tipo];
+      if (!template) {
+        return {
+          content: [{ type: "text", text: `Tipo de contrato '${tipo}' no encontrado.` }]
+        };
+      }
+
+      const fecha = new Date().toLocaleDateString("es-CL");
+      const contrato = `
 ====================================
 CONTRATO DE ${tipo.toUpperCase()}
 Fecha: ${fecha}
@@ -93,14 +128,19 @@ ${template.clausulas.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 Firma contraparte: _________________
 Firma Incrementa.la: _______________
 ====================================
-    `;
+      `;
 
-    return {
-      content: [{ type: "text", text: contrato }]
-    };
-  }
-);
+      return {
+        content: [{ type: "text", text: contrato }]
+      };
+    }
+  );
 
-// Iniciar el servidor
-const transport = new StdioServerTransport();
-await server.connect(transport);
+  return server;
+}
+
+// Iniciar servidor HTTP
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`contratos-mcp corriendo en puerto ${PORT}`);
+});
