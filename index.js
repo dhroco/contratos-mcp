@@ -1,10 +1,9 @@
-import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
+import cors from "cors";
 import { z } from "zod";
 
-// Templates de contratos
 const templates = {
   influencer: {
     campos: ["nombre", "rut", "monto", "duracion", "red_social"],
@@ -24,48 +23,12 @@ const templates = {
   }
 };
 
-// Crear servidor Express
-const app = express();
-app.use(cors());
-const transports = {};
-
-// Endpoint SSE — Claude se conecta aquí
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  transports[transport.sessionId] = transport;
-
-  res.on("close", () => {
-    delete transports[transport.sessionId];
-  });
-
-  const server = createMcpServer();
-  await server.connect(transport);
-});
-
-// Endpoint para recibir mensajes de Claude
-app.post("/messages", express.json(), async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = transports[sessionId];
-  if (transport) {
-    await transport.handlePostMessage(req, res);
-  } else {
-    res.status(400).json({ error: "Session not found" });
-  }
-});
-
-// Health check
-app.get("/", (req, res) => {
-  res.json({ status: "contratos-mcp running" });
-});
-
-// Función que crea y configura el servidor MCP
 function createMcpServer() {
   const server = new McpServer({
     name: "contratos-mcp",
     version: "1.0.0"
   });
 
-  // Herramienta 1: obtener_contrato
   server.tool(
     "obtener_contrato",
     "Retorna los campos requeridos para un tipo de contrato",
@@ -83,7 +46,6 @@ function createMcpServer() {
     }
   );
 
-  // Herramienta 2: generar_contrato
   server.tool(
     "generar_contrato",
     "Genera un contrato rellenando los campos del template sin modificar las cláusulas",
@@ -106,7 +68,6 @@ function createMcpServer() {
           content: [{ type: "text", text: `Tipo de contrato '${tipo}' no encontrado.` }]
         };
       }
-
       const fecha = new Date().toLocaleDateString("es-CL");
       const contrato = `
 ====================================
@@ -131,7 +92,6 @@ Firma contraparte: _________________
 Firma Incrementa.la: _______________
 ====================================
       `;
-
       return {
         content: [{ type: "text", text: contrato }]
       };
@@ -141,7 +101,25 @@ Firma Incrementa.la: _______________
   return server;
 }
 
-// Iniciar servidor HTTP
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Endpoint principal MCP - Streamable HTTP
+app.all("/mcp", async (req, res) => {
+  const server = createMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  await server.connect(transport);
+  await transport.handleRequest(req, res);
+});
+
+// Health check
+app.get("/", (req, res) => {
+  res.json({ status: "contratos-mcp running" });
+});
+
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`contratos-mcp corriendo en puerto ${PORT}`);
