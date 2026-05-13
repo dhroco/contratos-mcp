@@ -107,6 +107,8 @@ app.use(express.json());
 
 // Endpoint principal MCP - Streamable HTTP
 app.all("/mcp", async (req, res) => {
+  console.log("Body recibido:", JSON.stringify(req.body));
+  console.log("Content-Type:", req.headers["content-type"]);
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
