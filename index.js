@@ -109,12 +109,19 @@ app.use(express.json());
 app.all("/mcp", async (req, res) => {
   console.log("Body recibido:", JSON.stringify(req.body));
   console.log("Content-Type:", req.headers["content-type"]);
+  
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
+
+  res.on("finish", async () => {
+    await transport.close();
+    await server.close();
+  });
+
   await server.connect(transport);
-  await transport.handleRequest(req, res);
+  await transport.handleRequest(req, res, req.body);
 });
 
 // Health check
