@@ -69,29 +69,54 @@ function createMcpServer() {
         };
       }
       const fecha = new Date().toLocaleDateString("es-CL");
-      const contrato = `
-====================================
-CONTRATO DE ${tipo.toUpperCase()}
-Fecha: ${fecha}
-====================================
+      let contrato;
 
-DATOS DE LA CONTRAPARTE:
-- Nombre: ${datos.nombre || "NO ESPECIFICADO"}
-- RUT: ${datos.rut || "NO ESPECIFICADO"}
-- Monto: ${datos.monto || "NO ESPECIFICADO"}
-${datos.duracion ? `- Duración: ${datos.duracion}` : ""}
-${datos.red_social ? `- Red Social: ${datos.red_social}` : ""}
-${datos.descripcion_servicio ? `- Servicio: ${datos.descripcion_servicio}` : ""}
-${datos.fecha_entrega ? `- Fecha Entrega: ${datos.fecha_entrega}` : ""}
-
-CLÁUSULAS (no modificables):
-${template.clausulas.map((c, i) => `${i + 1}. ${c}`).join("\n")}
-
-====================================
-Firma contraparte: _________________
-Firma Incrementa.la: _______________
-====================================
-      `;
+      if (tipo === "influencer") {
+        contrato = `
+      ====================================
+      CONTRATO DE INFLUENCER
+      Fecha: ${fecha}
+      ====================================
+      
+      DATOS DE LA CONTRAPARTE:
+      - Nombre: ${datos.nombre || "NO ESPECIFICADO"}
+      - RUT: ${datos.rut || "NO ESPECIFICADO"}
+      - Monto: ${datos.monto || "NO ESPECIFICADO"}
+      - Duración: ${datos.duracion || "NO ESPECIFICADO"}
+      - Red Social: ${datos.red_social || "NO ESPECIFICADO"}
+      
+      CLÁUSULAS (no modificables):
+      ${template.clausulas.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+      
+      ====================================
+      Firma contraparte: _________________
+      Firma Incrementa.la: _______________
+      ====================================
+        `;
+      } else if (tipo === "servicios") {
+        contrato = `
+      ╔══════════════════════════════════════╗
+      ║       CONTRATO DE SERVICIOS          ║
+      ║       Fecha: ${fecha}           ║
+      ╚══════════════════════════════════════╝
+      
+      ► PROVEEDOR DE SERVICIOS
+        • Nombre:   ${datos.nombre || "NO ESPECIFICADO"}
+        • RUT:      ${datos.rut || "NO ESPECIFICADO"}
+        • Monto:    ${datos.monto || "NO ESPECIFICADO"}
+        • Servicio: ${datos.descripcion_servicio || "NO ESPECIFICADO"}
+        • Entrega:  ${datos.fecha_entrega || "NO ESPECIFICADO"}
+      
+      ► TÉRMINOS Y CONDICIONES
+      ${template.clausulas.map((c, i) => `  [${i + 1}] ${c}`).join("\n")}
+      
+      ► FIRMAS
+        Proveedor:      _____________________
+        Incrementa.la:  _____________________
+      
+        ★ Documento generado automáticamente por contratos-mcp
+        `;
+      }
       return {
         content: [{ type: "text", text: contrato }]
       };
